@@ -1,6 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
+import { CartItem } from 'src/app/common/cart-item';
 import { Product } from 'src/app/common/product';
+import { CartService } from 'src/app/services/cart-service';
 import { ProductService } from 'src/app/services/product.service';
 
 @Component({
@@ -14,10 +16,15 @@ export class ProductListComponent implements OnInit {
   currentCategoryId: number = 1;
   currentCategoryName: string = 'Books';
   searchMode: boolean = false;
-
+  thePageNumber: number = 1;
+	thePageSize: number = 10;
+	theTotalElements: number = 0;
+  previousCategoryId: number = 1;
+  previousKeyword: string = "";
 
   constructor(private productService: ProductService,
-    private route: ActivatedRoute) { }
+              private cartService: CartService,
+              private route: ActivatedRoute) { }
 
   ngOnInit(): void {
     this.route.paramMap.subscribe(() => {
@@ -38,11 +45,17 @@ export class ProductListComponent implements OnInit {
 
   handleSearchProducts() {
     const theKeyword: string = this.route.snapshot.paramMap.get('keyword')!;
-    this.productService.searchProducts(theKeyword).subscribe(
-      data => {
-        this.products = data;
-      }
-    );
+
+    if(this.previousKeyword != theKeyword){
+      this.thePageNumber = 1;
+    }
+
+    this.previousKeyword = theKeyword;
+    console.log(`keyword=${theKeyword}, thePageNumber=${this.thePageNumber}`);
+
+    this.productService.searchProductsPaginate(
+      this.thePageNumber-1, this.thePageSize, theKeyword)
+      .subscribe(this.processResult());
   }
 
   handleListProducts() {
@@ -61,8 +74,39 @@ export class ProductListComponent implements OnInit {
       // ... default to category id 1 and name = 'Books'
     }
 
-    this.productService.getProductList(this.currentCategoryId).subscribe(
-      data => { this.products = data; }
-    );
+    // check for change in category to make pagination code work
+    // if change is true than update categoryId
+    if(this.previousCategoryId != this.currentCategoryId){
+      this.thePageNumber = 1;
+    }
+
+    this.previousCategoryId = this.currentCategoryId;
+    console.log(`currentCategoryId=${this.currentCategoryId}, thePageNumber=${this.thePageNumber}`);
+
+    this.productService.getProductListPaginate(
+      this.thePageNumber -1,this.thePageSize,this.currentCategoryId)
+      .subscribe(this.processResult());
   }
+
+  updatePageSize(pageSize: string) {
+    this.thePageSize = +pageSize;
+    this.thePageNumber = 1;
+    this.listProducts();
+  }
+
+  processResult() {
+    return (data: any) => {
+      this.products = data._embedded.products;
+      this.thePageNumber = data.page.number + 1;
+      this.thePageSize = data.page.size;
+      this.theTotalElements = data.page.totalElements;
+    };
+  }
+
+  addToCart(theProduct: Product) {
+		console.log(`Adding to Cart: ${theProduct.name}, ${theProduct.unitPrice}`);
+    const theCartItem = new CartItem(theProduct);
+    this.cartService.addToCart(theCartItem);
+  }
+
 }
